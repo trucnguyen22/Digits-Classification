@@ -82,6 +82,8 @@ class Layer:
         to the previous layer (that layer still needs to multiply by
         its own activation_prime() before using it as its delta).
         """
+        if self.last_input is None:
+            raise ValueError("feedforward() must be called before compute_gradients()")
         nabla_b = delta
         nabla_w = np.dot(delta, self.last_input.transpose())
         propagated_error = np.dot(self.weights.transpose(), delta)
