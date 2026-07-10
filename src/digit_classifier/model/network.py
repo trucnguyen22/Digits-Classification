@@ -1,6 +1,6 @@
 """
-network_oop.py
-~~~~~~~~~~~~~~
+network.py
+~~~~~~~~~~
 
 An object-oriented refactor of the original network.py.
 
@@ -27,6 +27,7 @@ each class has exactly one reason to change.
 """
 
 import random
+import pickle
 import numpy as np
 
 
@@ -154,6 +155,34 @@ class NeuralNetwork:
             (np.argmax(self.feedforward(x)), y) for (x, y) in test_data
         ]
         return sum(int(x == y) for (x, y) in test_results)
+
+    def save(self, filepath):
+        """Persist this network's architecture and learned parameters
+        to disk. We only need `sizes` plus each layer's weights/biases
+        to fully reconstruct the network later - none of the cached
+        forward-pass state (last_input, last_z, ...) is needed."""
+        state = {
+            "sizes": self.sizes,
+            "weights": [layer.weights for layer in self.layers],
+            "biases": [layer.biases for layer in self.layers],
+        }
+        with open(filepath, "wb") as f:
+            pickle.dump(state, f)
+
+    @classmethod
+    def load(cls, filepath):
+        """Reconstruct a NeuralNetwork from a file written by save().
+        Creates the network with the right architecture (which randomly
+        initializes weights), then overwrites those weights/biases with
+        the saved, trained values."""
+        with open(filepath, "rb") as f:
+            state = pickle.load(f)
+
+        network = cls(state["sizes"])
+        for layer, weights, biases in zip(network.layers, state["weights"], state["biases"]):
+            layer.weights = weights
+            layer.biases = biases
+        return network
 
 
 class Optimizer:

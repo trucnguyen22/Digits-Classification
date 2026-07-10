@@ -1,6 +1,6 @@
 """
-mnist_loader
-~~~~~~~~~~~~
+loader.py
+~~~~~~~~~
 
 A library to load the MNIST image data.  For details of the data
 structures that are returned, see the doc strings for ``load_data``
@@ -12,11 +12,25 @@ function usually called by our neural network code.
 # Standard library
 import pickle
 import gzip
+from pathlib import Path
 
 # Third-party libraries
 import numpy as np
 
-def load_data():
+# Previously this module hardcoded the relative path '../data/mnist.pkl.gz',
+# which only worked if you happened to run Python from inside src/. That's
+# a hidden dependency on the caller's current working directory - a classic
+# "works on my machine" bug. Instead, we compute an absolute default path
+# from this file's own location (independent of cwd), and let callers
+# override it explicitly if they want a different location.
+#
+# This file lives at: <repo_root>/src/digit_classifier/data/loader.py
+# so the repo root is three directories up.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_DATA_PATH = _REPO_ROOT / "data" / "mnist.pkl.gz"
+
+
+def load_data(path=DEFAULT_DATA_PATH):
     """Return the MNIST data as a tuple containing the training data,
     the validation data, and the test data.
 
@@ -39,12 +53,12 @@ def load_data():
     That's done in the wrapper function ``load_data_wrapper()``, see
     below.
     """
-    f = gzip.open('../data/mnist.pkl.gz', 'rb')
-    training_data, validation_data, test_data = pickle.load(f, encoding='latin1')
-    f.close()
+    with gzip.open(path, "rb") as f:
+        training_data, validation_data, test_data = pickle.load(f, encoding="latin1")
     return (training_data, validation_data, test_data)
 
-def load_data_wrapper():
+
+def load_data_wrapper(path=DEFAULT_DATA_PATH):
     """Return a tuple containing ``(training_data, validation_data,
     test_data)``. Based on ``load_data``, but the format is more
     convenient for use in our implementation of neural networks.
@@ -65,7 +79,7 @@ def load_data_wrapper():
     the training data and the validation / test data.  These formats
     turn out to be the most convenient for use in our neural network
     code."""
-    tr_d, va_d, te_d = load_data()
+    tr_d, va_d, te_d = load_data(path)
     training_inputs = [np.reshape(x, (784, 1)) for x in tr_d[0]]
     training_results = [vectorized_result(y) for y in tr_d[1]]
     training_data = list(zip(training_inputs, training_results))
@@ -74,6 +88,7 @@ def load_data_wrapper():
     test_inputs = [np.reshape(x, (784, 1)) for x in te_d[0]]
     test_data = list(zip(test_inputs, te_d[1]))
     return (training_data, validation_data, test_data)
+
 
 def vectorized_result(j):
     """Return a 10-dimensional unit vector with a 1.0 in the jth

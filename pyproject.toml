@@ -1,0 +1,18 @@
+[project]
+name = "digit-classifier"
+version = "0.1.0"
+description = "A from-scratch neural network (numpy, no ML framework) for MNIST digit classification, served via FastAPI."
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
