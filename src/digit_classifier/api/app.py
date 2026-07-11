@@ -3,11 +3,13 @@ app.py
 ~~~~~~
 
 The FastAPI application: routing and request/response wiring only.
-Validation shapes live in schemas.py, and all neural-network logic
-lives in digit_classifier.model.network - this file's only job is to
-connect HTTP requests to that model and hand back a response.
+Validation shapes live in schemas.py, neural-network logic lives in
+digit_classifier.model.network, and prediction logging lives in
+digit_classifier.storage.database - this file's only job is to
+connect HTTP requests to those pieces and hand back a response.
 """
 
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -15,7 +17,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
 from digit_classifier.model.network import NeuralNetwork
-from digit_classifier.api.schemas import DigitInput, PredictionOutput
+from digit_classifier.api.schemas import DigitInput, PredictionOutput, PredictionRecord
+from digit_classifier.storage.database import init_db, log_prediction, get_recent_predictions
+
+logger = logging.getLogger(__name__)
 
 # This file lives at: <repo_root>/src/digit_classifier/api/app.py
 # so the repo root is three directories up. Same pattern as
@@ -43,6 +48,10 @@ try:
     network = NeuralNetwork.load(WEIGHTS_PATH)
 except FileNotFoundError:
     network = None
+
+# Create the predictions table if it doesn't exist yet. Safe to run on
+# every startup - a no-op once the table's already there.
+init_db()
 
 
 @app.get("/")
@@ -74,4 +83,21 @@ def predict(input: DigitInput):
     predicted_digit = int(np.argmax(output_activations))
     confidence = float(output_activations[predicted_digit, 0])
 
+    # Logging is secondary to the actual prediction - if the database
+    # write fails for any reason, the user should still get their
+    # prediction rather than a 500 error over a logging problem.
+    try:
+        log_prediction(
+            pixels=input.pixels,
+            predicted_digit=predicted_digit,
+            confidence=confidence,
+        )
+    except Exception:
+        logger.exception("Failed to log prediction to database")
+
     return PredictionOutput(predicted_digit=predicted_digit, confidence=confidence)
+
+
+@app.get("/predictions", response_model=list[PredictionRecord])
+def recent_predictions(limit: int = 20):
+    return get_recent_predictions(limit=limit)

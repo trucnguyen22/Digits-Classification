@@ -21,13 +21,13 @@ that captures and preprocesses user input the same way the training data
 was preprocessed, a persisted/reloadable model artifact instead of retraining
 on every request, an automated correctness check (numerical gradient
 checking) instead of just trusting that training loss went down, a pytest
-regression suite, and a cloud deployment - the full path from "the math
-works" to "a person can use this in a browser."
+regression suite, prediction logging, and a cloud deployment - the full path
+from "the math works" to "a person can use this in a browser."
 
 The implementation follows the structure introduced in Michael Nielsen's
 [*Neural Networks and Deep Learning*](http://neuralnetworksanddeeplearning.com/),
 refactored into an object-oriented design and extended with the API, testing,
-and deployment work described below.
+logging, and deployment work described below.
 
 ## What it does
 
@@ -69,6 +69,20 @@ than it should. Two things exist specifically to catch that:
   sanity check (loss should trend downward over epochs on a small synthetic
   dataset).
 
+## Prediction logging
+
+Every call to `/predict` is logged to a SQLite database
+(`src/digit_classifier/storage/database.py`): the submitted pixels, the
+predicted digit, the confidence, and a timestamp. This is separate from
+`digit_classifier.data`, which loads MNIST's *training* data - this module
+records real *inference-time* input instead.
+
+Beyond basic observability, this builds a growing dataset of genuine
+user-drawn digits - meaningfully different from MNIST's scanned handwriting
+samples - which could be used later to check for model drift or to fine-tune
+the network on real-world input. Recent predictions (without the raw pixels)
+can be viewed via `GET /predictions`.
+
 ## Project structure
 
 ```
@@ -77,10 +91,13 @@ than it should. Two things exist specifically to catch that:
 │   └── mnist.pkl.gz                  # training data
 ├── models/
 │   └── model_weights.pkl             # trained weights (generated, gitignored)
+├── db/
+│   └── predictions.db                # prediction log (generated, gitignored)
 ├── src/digit_classifier/
 │   ├── model/network.py              # Layer, NeuralNetwork, Optimizer, Trainer
 │   ├── data/loader.py                # MNIST loading/preprocessing
 │   ├── diagnostics/gradient_checker.py
+│   ├── storage/database.py           # SQLite prediction logging
 │   ├── api/
 │   │   ├── app.py                    # FastAPI routes
 │   │   ├── schemas.py                # request/response models
@@ -134,6 +151,7 @@ pytest -v
 | `/` | GET | Serves the drawing frontend |
 | `/health` | GET | Health check |
 | `/predict` | POST | Body: `{"pixels": [784 floats, 0.0-1.0]}`. Returns `{"predicted_digit": int, "confidence": float}` |
+| `/predictions` | GET | Recent logged predictions (`?limit=N`, default 20). Returns id, timestamp, predicted digit, and confidence for each - no raw pixels |
 
 ## Deployment
 
@@ -143,12 +161,6 @@ currently deployed on an AWS EC2 instance (Ubuntu, t3.micro).
 
 ## Roadmap
 
-- **Prediction logging (SQLite)** - log each prediction request (the input
-  pixels, predicted digit, confidence, and timestamp) to a database. Beyond
-  basic observability, this builds a growing dataset of real, user-drawn
-  digits - meaningfully different from MNIST's scanned handwriting samples -
-  which could be used later to evaluate model drift or fine-tune the network
-  on real-world input.
 - **GitHub Issues / PR workflow** - track ongoing work through issues and
   pull requests rather than direct commits, as a more realistic software
   development workflow.

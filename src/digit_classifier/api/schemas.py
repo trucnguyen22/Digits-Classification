@@ -25,3 +25,13 @@ class PredictionOutput(BaseModel):
     """Response body for POST /predict."""
     predicted_digit: int
     confidence: float
+
+
+class PredictionRecord(BaseModel):
+    """One row from the predictions log, as returned by GET /predictions.
+    Deliberately excludes the raw pixels - this is a summary view, not
+    a way to pull training data back out through the API."""
+    id: int
+    timestamp: str
+    predicted_digit: int
+    confidence: float

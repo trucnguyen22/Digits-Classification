@@ -9,3 +9,7 @@ dist/
 # Trained model weights: a generated binary artifact, not source.
 # Regenerate with `python -m digit_classifier.scripts.train`.
 models/*.pkl
+
+# Prediction log database: runtime-generated state, grows over time,
+# differs per deployment - not something to version control.
+db/*.db
