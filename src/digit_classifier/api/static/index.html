@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Digit Classifier</title>
+<style>
+  body {
+    font-family: sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    margin-top: 40px;
+  }
+  #drawCanvas {
+    border: 2px solid #333;
+    background: black;
+    cursor: crosshair;
+    touch-action: none; /* prevents the page from scrolling while drawing on touch devices */
+  }
+  .controls {
+    display: flex;
+    gap: 12px;
+  }
+  button {
+    padding: 8px 20px;
+    font-size: 16px;
+    cursor: pointer;
+  }
+  #result {
+    font-size: 20px;
+    min-height: 28px;
+  }
+</style>
+</head>
+<body>
+  <h1>Draw a digit (0-9)</h1>
+  <canvas id="drawCanvas" width="280" height="280"></canvas>
+  <div class="controls">
+    <button id="predictBtn">Predict</button>
+    <button id="clearBtn">Clear</button>
+  </div>
+  <div id="result"></div>
+
+<script>
+const canvas = document.getElementById('drawCanvas');
+const ctx = canvas.getContext('2d');
+const resultDiv = document.getElementById('result');
+
+// MNIST digits are white strokes on a black background - we match
+// that convention here, since the network only ever learned to
+// recognize digits drawn that way. Draw it inverted and the network
+// sees something it's never seen in training.
+function resetCanvas() {
+  ctx.fillStyle = 'black';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+resetCanvas();
+
+ctx.strokeStyle = 'white';
+ctx.lineWidth = 20;
+ctx.lineCap = 'round';
+ctx.lineJoin = 'round';
+
+let isDrawing = false;
+let lastX = 0;
+let lastY = 0;
+
+function getPos(evt) {
+  const rect = canvas.getBoundingClientRect();
+  const point = evt.touches ? evt.touches[0] : evt;
+  return {
+    x: (point.clientX - rect.left) * (canvas.width / rect.width),
+    y: (point.clientY - rect.top) * (canvas.height / rect.height),
+  };
+}
+
+function startDraw(evt) {
+  evt.preventDefault();
+  isDrawing = true;
+  const pos = getPos(evt);
+  lastX = pos.x;
+  lastY = pos.y;
+}
+
+function draw(evt) {
+  if (!isDrawing) return;
+  evt.preventDefault();
+  const pos = getPos(evt);
+  ctx.beginPath();
+  ctx.moveTo(lastX, lastY);
+  ctx.lineTo(pos.x, pos.y);
+  ctx.stroke();
+  lastX = pos.x;
+  lastY = pos.y;
+}
+
+function stopDraw() {
+  isDrawing = false;
+}
+
+canvas.addEventListener('mousedown', startDraw);
+canvas.addEventListener('mousemove', draw);
+canvas.addEventListener('mouseup', stopDraw);
+canvas.addEventListener('mouseleave', stopDraw);
+
+canvas.addEventListener('touchstart', startDraw);
+canvas.addEventListener('touchmove', draw);
+canvas.addEventListener('touchend', stopDraw);
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  resetCanvas();
+  resultDiv.textContent = '';
+});
+
+async function predict() {
+  // Downsample the 280x280 drawing to a 28x28 canvas - matches the
+  // resolution the network was trained on. drawImage() with a
+  // smaller destination does the shrinking for us.
+  const small = document.createElement('canvas');
+  small.width = 28;
+  small.height = 28;
+  const smallCtx = small.getContext('2d');
+  smallCtx.drawImage(canvas, 0, 0, 28, 28);
+
+  // getImageData returns RGBA bytes, 4 per pixel, in row-major order -
+  // the same order mnist_loader.py's np.reshape(x, (784, 1)) expects.
+  const imageData = smallCtx.getImageData(0, 0, 28, 28).data;
+
+  // We drew in grayscale (white on black), so R, G, and B are
+  // identical for every pixel - just read the red channel. Normalize
+  // 0-255 to 0.0-1.0 to match how mnist_loader.py normalizes training
+  // data.
+  const pixels = [];
+  for (let i = 0; i < imageData.length; i += 4) {
+    pixels.push(imageData[i] / 255);
+  }
+
+  resultDiv.textContent = 'Predicting...';
+
+  try {
+    const response = await fetch('/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pixels }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.json();
+      resultDiv.textContent = `Error: ${JSON.stringify(errorBody.detail)}`;
+      return;
+    }
+
+    const data = await response.json();
+    const confidencePct = (data.confidence * 100).toFixed(1);
+    resultDiv.textContent = `Predicted: ${data.predicted_digit} (confidence: ${confidencePct}%)`;
+  } catch (err) {
+    resultDiv.textContent = `Request failed: ${err}`;
+  }
+}
+
+document.getElementById('predictBtn').addEventListener('click', predict);
+</script>
+</body>
+</html>

@@ -12,6 +12,7 @@ from pathlib import Path
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 
 from digit_classifier.model.network import NeuralNetwork
 from digit_classifier.api.schemas import DigitInput, PredictionOutput
@@ -23,6 +24,13 @@ from digit_classifier.api.schemas import DigitInput, PredictionOutput
 # launched from.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 WEIGHTS_PATH = _REPO_ROOT / "models" / "model_weights.pkl"
+
+# The frontend is a single self-contained HTML file (canvas + JS)
+# living next to this module, not a separate app/server. Serving it
+# from the same FastAPI process means one port, one process to deploy,
+# and no CORS configuration needed since the page and the API it calls
+# share the same origin.
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app = FastAPI()
 
@@ -38,7 +46,13 @@ except FileNotFoundError:
 
 
 @app.get("/")
-def read_root():
+def serve_frontend():
+    """The drawing UI - what a person visiting the site actually sees."""
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/health")
+def health_check():
     return {"status": "ok", "message": "Digit classifier API is running"}
 
 
